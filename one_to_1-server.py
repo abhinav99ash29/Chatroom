@@ -28,7 +28,7 @@ def SendAudio():
             print("Recording Sound...")
         else:
             print("Silence..")
-        clientAudioSocket.sendall(data)
+        serverAudioSocket.sendall(data)
 
 def RecieveAudio():
     while True:
@@ -40,9 +40,9 @@ def recvallAudio(size):
     while len(databytes) != size:
         to_read = size - len(databytes)
         if to_read > (4 * CHUNK):
-            databytes += clientAudioSocket.recv(4 * CHUNK)
+            databytes += serverAudioSocket.recv(4 * CHUNK)
         else:
-            databytes += clientAudioSocket.recv(to_read)
+            databytes += serverAudioSocket.recv(to_read)
     return databytes
 
 def SendFrame():
@@ -56,15 +56,15 @@ def SendFrame():
         databytes = zlib.compress(jpg_as_text, 9)
         length = struct.pack('!I', len(databytes))
         bytesToBeSend = b''
-        clientVideoSocket.sendall(length)
+        serverVideoSocket.sendall(length)
         while len(databytes) > 0:
             if (5000 * CHUNK) <= len(databytes):
                 bytesToBeSend = databytes[:(5000 * CHUNK)]
                 databytes = databytes[(5000 * CHUNK):]
-                clientVideoSocket.sendall(bytesToBeSend)
+                serverVideoSocket.sendall(bytesToBeSend)
             else:
                 bytesToBeSend = databytes
-                clientVideoSocket.sendall(bytesToBeSend)
+                serverVideoSocket.sendall(bytesToBeSend)
                 databytes = b''
         print("##### Data Sent!! #####")
 
@@ -91,27 +91,36 @@ def recvallVideo(size):
     while len(databytes) != size:
         to_read = size - len(databytes)
         if to_read > (5000 * CHUNK):
-            databytes += clientVideoSocket.recv(5000 * CHUNK)
+            databytes += serverVideoSocket.recv(5000 * CHUNK)
         else:
-            databytes += clientVideoSocket.recv(to_read)
+            databytes += serverVideoSocket.recv(to_read)
     return databytes
 
 
 
-clientVideoSocket = socket(family=AF_INET, type=SOCK_STREAM)
-clientVideoSocket.connect((HOST, PORT_VIDEO))
+serverVideoSocket = socket(family=AF_INET, type=SOCK_STREAM)
+serverVideoSocket.bind((HOST, PORT_VIDEO))
 wvs = WebcamVideoStream(0).start()
 
-clientAudioSocket = socket(family=AF_INET, type=SOCK_STREAM)
-clientAudioSocket.connect((HOST, PORT_AUDIO))
+serverAudioSocket = socket(family=AF_INET, type=SOCK_STREAM)
+serverAudioSocket.bind((HOST, PORT_AUDIO))
+
+print('Server listening ...')
+serverVideoSocket.listen(4)
+serverAudioSocket.listen(4)
+serverVideoSocket.accept()
+print('Video connected ...')
+serverAudioSocket.accept()
+print('Audio connected ...')
 
 audio=pyaudio.PyAudio()
 stream=audio.open(format=FORMAT,channels=CHANNELS, rate=RATE, input=True, output = True,frames_per_buffer=CHUNK)
 
-initiation = clientVideoSocket.recv(5).decode()
+Thread(target=SendFrame).start()
+Thread(target=SendAudio).start()
+Thread(target=RecieveFrame).start()
+Thread(target=RecieveAudio).start()
 
-if initiation == "start":
-    SendFrameThread = Thread(target=SendFrame).start()
-    SendAudioThread = Thread(target=SendAudio).start()
-    RecieveFrameThread = Thread(target=RecieveFrame).start()
-    RecieveAudioThread = Thread(target=RecieveAudio).start()
+serverVideoSocket.send('start'.encode())
+print('Video chat started ...')
+
